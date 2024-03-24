@@ -1,113 +1,276 @@
+"use client";
 import Image from "next/image";
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuIndicator,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+  NavigationMenuViewport,
+} from "@/components/ui/navigation-menu";
+import BottomNavigationBar from "@/components/bottom-navigation";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  generateRandomNumber,
+  generateRandomNumberLessThan,
+} from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { MoveRight, RefreshCcwDotIcon, Send } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/use-toast";
+
+type MathQuiz = {
+  startTime: Date;
+  quiz: Quiz[];
+  endTime?: Date;
+};
+
+type Quiz = {
+  question: string;
+  expressions: Expression[];
+  suggestedAnswer: number;
+  answer: number | null;
+  isCorrect?: boolean;
+};
+
+type Operations = "+" | "-" | "x" | "÷";
+
+type OPERATION = {
+  eq: Operations;
+  sub: Operations;
+  add: Operations;
+  mul: Operations;
+  divide: Operations;
+};
+
+function getRandomOperation(): Operations {
+  // Get all operation values as an array
+  const operationValues: Operations[] = ["+", "-", "x"];
+
+  // Return a random operation from the array
+  return operationValues[Math.floor(Math.random() * operationValues.length)];
+}
+
+function generatePOMDASQuestion(numOperations = 1, maxDigit = 10): Quiz {
+  const expressions: Expression[] = [];
+
+  // Generate the first number
+  expressions.push(generateRandomNumber(maxDigit) + 1);
+  let lastNum = 0;
+  for (let i = 0; i < numOperations; i++) {
+    let op = getRandomOperation();
+    let num =
+      lastNum == 0
+        ? generateRandomNumber()
+        : generateRandomNumberLessThan(maxDigit, lastNum);
+    expressions.push(op);
+    expressions.push(num);
+  }
+  // Convert expressions to string representation
+  const questionString = expressions
+    .map((expr) => (typeof expr === "number" ? expr.toString() : expr))
+    .join(" ");
+
+  let suggestedAnswer = solvePOMDAS(expressions);
+  return {
+    question: questionString,
+    expressions,
+    suggestedAnswer,
+    answer: null,
+  };
+}
+
+type Expression = number | "+" | "-" | "x" | "÷";
+
+function solvePOMDAS(exps: Expression[]): number {
+  let result: number | undefined;
+  let currentOperation: "+" | "-" | "x" | "÷" | undefined;
+
+  for (let i = 0; i < exps.length; i++) {
+    const currentExp = exps[i];
+
+    if (typeof currentExp === "number") {
+      if (result === undefined) {
+        result = currentExp;
+      } else {
+        if (currentOperation === "+") {
+          result += currentExp;
+        } else if (currentOperation === "-") {
+          result -= currentExp;
+        } else if (currentOperation === "x") {
+          result *= currentExp;
+        } else if (currentOperation === "÷") {
+          result /= currentExp;
+        } else {
+          throw new Error("Invalid operation encountered");
+        }
+      }
+    } else {
+      currentOperation = currentExp as "+" | "-" | "x" | "÷";
+    }
+  }
+
+  if (result === undefined) {
+    throw new Error("No valid expression found");
+  }
+
+  return result;
+}
+
+function evaluateExpression(qz: Quiz): boolean {
+  if (Number(qz.suggestedAnswer) === Number(qz.answer)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function getTimeDifference(date1 = new Date(), date2: Date): string {
+  // Get the time difference in milliseconds
+  const milliDiff = date2.getTime() - date1.getTime();
+
+  // Calculate seconds, minutes, and hours from milliseconds
+  const totalSeconds = Math.floor(milliDiff / 1000);
+  const remainingSeconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / (60 * 60));
+
+  // Format the time difference string (HH:MM:SS) with leading zeros
+  const formattedTime = `${hours.toString().padStart(2, "0")}:${totalMinutes
+    .toString()
+    .padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+
+  return formattedTime;
+}
 
 export default function Home() {
+  const { toast } = useToast();
+  const [questions, setQuestions] = useState<MathQuiz | null>();
+  const [isEvalued, setIsEvalued] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  const [time, setTime] = useState("00:00:00");
+  const [finalText, setFinalText] = useState("");
+  useEffect(() => {
+    setQuestions(null);
+    let quis = [];
+    for (let i = 0; i < 20; i++) {
+      let q = generatePOMDASQuestion();
+      quis.push(q);
+    }
+    const mQ: MathQuiz = {
+      startTime: new Date(),
+      quiz: quis,
+    };
+    setQuestions(mQ);
+    setIsEvalued(false);
+    // title: ``,
+    setFinalText("");
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!questions?.startTime) return;
+
+    const intervalId = setInterval(() => {
+      const timeDifference = getTimeDifference(questions.startTime, new Date());
+      setTime(timeDifference);
+    }, 1000); // Update every second
+
+    return () => clearInterval(intervalId);
+  }, [questions?.startTime, refresh]);
+
+  function validateAndSaveToLocalStorage() {
+    let qs = structuredClone(questions);
+    qs?.quiz.forEach((q) => {
+      if (evaluateExpression(q)) {
+        q.isCorrect = true;
+      } else {
+        q.isCorrect = false;
+      }
+    });
+    if (qs) {
+      qs.endTime = new Date();
+    }
+    let name = "QUIZ" + qs?.startTime.toISOString();
+    localStorage.setItem(name, JSON.stringify(qs));
+    setIsEvalued(true);
+    setQuestions(qs);
+
+    const correctCount = qs?.quiz.filter((q) => q.isCorrect);
+    toast({
+      title: `Solved: ${correctCount?.length} are correct from ${qs?.quiz.length}`,
+    });
+    setFinalText(
+      `Solved: ${Number(correctCount?.length)} are correct from ${
+        qs?.quiz.length
+      }`
+    );
+  }
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
+    <main className="relative  p-1">
+      <h1 className="pb-2 text-3xl font-semibold tracking-tight transition-colors first:mt-0 flex items-center  gap-2">
+        Macer <MoveRight />
+      </h1>
+      <div className="flex gap-2 justify-between">
+        <h2 className="pb-2 text-3xl font-semibold tracking-tight transition-colors first:mt-0">
+          {time}
+        </h2>
+        <Button
+          onClick={() => {
+            setRefresh(refresh + 1);
+          }}
+        >
+          <RefreshCcwDotIcon />
+        </Button>
       </div>
+      {questions != null ? (
+        questions.quiz.map((q, index) => {
+          return (
+            <div
+              className={`mx-2 border my-1 ${
+                isEvalued && q.isCorrect == false
+                  ? "border-red-500 animate-pulse"
+                  : ""
+              }`}
+            >
+              <br />
+              <h2 className="pb-2 text-3xl font-semibold tracking-tight transition-colors first:mt-0">
+                {q.question}
+              </h2>
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-full sm:before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full sm:after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50 text-balance`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
+              <Input
+                type="text"
+                value={String(q.answer)}
+                onChange={(event) => {
+                  let value = Number(event.target.value);
+                  const qClone = structuredClone(questions.quiz);
+                  qClone[index].answer = value;
+                  setQuestions((prev) => {
+                    return {
+                      ...prev,
+                      quiz: qClone,
+                    };
+                  });
+                }}
+              />
+            </div>
+          );
+        })
+      ) : (
+        <>"Genarting Question"</>
+      )}
+      <Button
+        className="mt-10"
+        onClick={() => {
+          validateAndSaveToLocalStorage();
+        }}
+      >
+        Submit
+      </Button>
+      <br />
+      {finalText}
     </main>
   );
 }
