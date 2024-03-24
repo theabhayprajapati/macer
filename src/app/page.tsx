@@ -229,7 +229,8 @@ export default function Home() {
         questions.quiz.map((q, index) => {
           return (
             <div
-              className={`mx-2 border my-1 ${
+              key={index}
+              className={`mx-j border my-1 ${
                 isEvalued && q.isCorrect == false
                   ? "border-red-500 animate-pulse"
                   : ""
@@ -247,7 +248,7 @@ export default function Home() {
                   let value = Number(event.target.value);
                   const qClone = structuredClone(questions.quiz);
                   qClone[index].answer = value;
-                  setQuestions((prev) => {
+                  setQuestions((prev: any) => {
                     return {
                       ...prev,
                       quiz: qClone,
@@ -259,7 +260,7 @@ export default function Home() {
           );
         })
       ) : (
-        <>"Genarting Question"</>
+        <>Genarting Question</>
       )}
       <Button
         className="mt-10"

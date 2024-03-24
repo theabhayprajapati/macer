@@ -22,9 +22,9 @@ const BOTTOM_NAVIGATION_BAR_CONTENT = [
 const BottomNavigationBar = () => {
   return (
     <div className="absolute bottom-0 flex justify-between items-center h-5 w-full py-8 gap-2 bg-gray-400">
-      {BOTTOM_NAVIGATION_BAR_CONTENT.map((icon) => {
+      {BOTTOM_NAVIGATION_BAR_CONTENT.map((icon, index) => {
         return (
-          <Link href={icon.link}>
+          <Link href={icon.link} key={index}>
             <div className="p-4 w-full">{icon.name}</div>
           </Link>
         );
